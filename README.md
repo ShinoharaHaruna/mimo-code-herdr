@@ -33,6 +33,16 @@ spoofing required for the default mode.
 
 ## Install
 
+### One-liner (prebuilt binaries)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ShinoharaHaruna/mimo-code-herdr/main/install.sh | sh
+```
+
+Downloads the release binary for your platform (Linux x86_64, macOS
+arm64/x86_64), verifies its SHA-256, installs it to `~/.local/bin`, and wires
+up the MiMo Code plugin automatically.
+
 ### From source
 
 ```sh

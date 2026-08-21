@@ -2,6 +2,9 @@
 name = "mimo-herdr"
 version = "0.1.0"
 edition = "2024"
+description = "MiMo Code <-> herdr custom-agent bridge: lifecycle state, crash-proof exit cleanup, one-command spawn"
+repository = "https://github.com/ShinoharaHaruna/mimo-code-herdr"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
