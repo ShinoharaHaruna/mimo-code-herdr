@@ -1,0 +1,21 @@
+Third-party notices
+====================
+
+This project includes or is derived from the following third-party works:
+
+herdr (Apache License 2.0)
+--------------------------
+- Source: https://github.com/herdrdev/herdr
+- The plugin's event-to-state mapping (session.status / permission.asked /
+  question.asked / session.idle handling) follows the design of herdr's
+  opencode integration plugin
+  (src/integration/assets/opencode/herdr-agent-state.js).
+- Reporting follows herdr's documented custom-integration path:
+  https://herdr.dev/docs/integrations/#integrate-your-own-agent
+- Apache License 2.0 text: https://www.apache.org/licenses/LICENSE-2.0
+
+junliu-mde/mimo-code-herdr-plugin (MIT License)
+-----------------------------------------------
+- Source: https://github.com/junliu-mde/mimo-code-herdr-plugin
+- The busy-set state aggregation (blocked > working-if-any-busy > idle) and
+- the detached pipe-watchdog exit-cleanup pattern are adapted from this work.
