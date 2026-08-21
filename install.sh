@@ -104,9 +104,15 @@ else
     echo "need curl or wget" >&2
     exit 1
   fi
-  # Verify checksum when a .sha256 file was fetched alongside.
+  # Verify checksum when a .sha256 file was fetched alongside. Compare the
+  # hash manually so both "hash only" and "hash  filename" formats work.
   if [ -f "$TMP/$TARBALL.sha256" ] && command -v shasum >/dev/null 2>&1; then
-    (cd "$TMP" && shasum -a 256 -c "$TARBALL.sha256") >/dev/null
+    expected="$(awk '{print $1}' "$TMP/$TARBALL.sha256")"
+    actual="$(shasum -a 256 "$TMP/$TARBALL" | awk '{print $1}')"
+    if [ "$expected" != "$actual" ]; then
+      echo "checksum mismatch for $TARBALL" >&2
+      exit 1
+    fi
   fi
 fi
 

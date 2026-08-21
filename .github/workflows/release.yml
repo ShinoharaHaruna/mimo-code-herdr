@@ -27,8 +27,9 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf "dist/mimo-herdr-${{ matrix.target }}.tar.gz" -C target/release mimo-herdr
-          shasum -a 256 "dist/mimo-herdr-${{ matrix.target }}.tar.gz" \
-            | awk '{print $1}' > "dist/mimo-herdr-${{ matrix.target }}.tar.gz.sha256"
+          # Standard "hash  filename" format so `shasum -c` works.
+          (cd dist && shasum -a 256 "mimo-herdr-${{ matrix.target }}.tar.gz") \
+            > "dist/mimo-herdr-${{ matrix.target }}.tar.gz.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: mimo-herdr-${{ matrix.target }}
