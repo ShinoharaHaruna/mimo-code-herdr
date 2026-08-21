@@ -1,5 +1,7 @@
 # mimo-code-herdr
 
+> **English** | [简体中文](README.zh-CN.md)
+
 Make [MiMo Code](https://github.com/XiaomiMiMo/MiMo-Code) a first-class agent in
 [herdr](https://herdr.dev): lifecycle state in the sidebar (`idle` / `working` /
 `blocked`), crash-proof exit cleanup, one-command spawn — and an optional
@@ -39,9 +41,9 @@ spoofing required for the default mode.
 curl -fsSL https://raw.githubusercontent.com/ShinoharaHaruna/mimo-code-herdr/main/install.sh | sh
 ```
 
-Downloads the release binary for your platform (Linux x86_64, macOS
-arm64/x86_64), verifies its SHA-256, installs it to `~/.local/bin`, and wires
-up the MiMo Code plugin automatically.
+Downloads the release binary for your platform (Linux x86_64, macOS arm64),
+verifies its SHA-256, installs it to `~/.local/bin`, and wires up the MiMo
+Code plugin automatically.
 
 ### From source
 
@@ -154,7 +156,7 @@ delegation is fine; use shim mode when you want other agents to
 | herdr | 0.8.2 |
 | MiMo Code | 0.1.13 |
 | plugin dirs | both `plugins/` and `plugin/` are scanned by mimo; installer prefers `plugins/` |
-| OS | Linux (macOS expected; Windows untested) |
+| OS | Linux x86_64, macOS arm64 (prebuilt); other platforms buildable from source |
 
 ## Credits
 

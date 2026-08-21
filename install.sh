@@ -35,9 +35,8 @@ detect_target() {
   case "$(uname -s)-$(uname -m)" in
     Linux-x86_64|Linux-amd64) echo "x86_64-unknown-linux-gnu" ;;
     Darwin-arm64) echo "aarch64-apple-darwin" ;;
-    Darwin-x86_64) echo "x86_64-apple-darwin" ;;
     *)
-      echo "unsupported platform: $(uname -s)-$(uname -m)" >&2
+      echo "unsupported platform: $(uname -s)-$(uname -m) (only Linux x86_64 and macOS arm64 are published)" >&2
       exit 1
       ;;
   esac
