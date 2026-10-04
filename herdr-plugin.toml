@@ -1,0 +1,15 @@
+plugin_id = "mimo-code-herdr"
+name = "MiMo Code Herdr Bridge"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "MiMo Code as a first-class herdr agent: lifecycle state in the sidebar, crash-proof exit cleanup, one-command spawn"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["sh", "install.sh"]
+
+[[actions]]
+id = "status"
+title = "MiMo Code Herdr: health check"
+contexts = ["global"]
+command = ["mimo-herdr", "status"]
