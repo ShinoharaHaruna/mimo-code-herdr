@@ -1,4 +1,4 @@
-plugin_id = "mimo-code-herdr"
+id = "mimo-code-herdr"
 name = "MiMo Code Herdr Bridge"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
