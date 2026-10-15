@@ -82,6 +82,7 @@ pub fn spawn(
         &cwd,
         if shim { "mimo (shim)" } else { "mimo" },
         env.as_deref(),
+        Some(&ws),
     )?;
     println!("created tab {tab}, pane {pane}");
 

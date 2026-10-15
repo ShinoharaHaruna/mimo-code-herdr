@@ -24,7 +24,7 @@ pub fn mimo_config_dir() -> Result<PathBuf> {
 
 /// MiMo Code (an opencode fork) scans both `plugin/` and `plugins/` dirs on
 /// current versions. Prefer `plugins/` (opencode convention) but respect an
-/// existing `plugin/` dir so we don't scatter files.
+/// existing `plugin/` dir so we do not scatter files.
 pub fn plugin_dir(config_dir: &Path) -> Result<PathBuf> {
     let plural = config_dir.join("plugins");
     let singular = config_dir.join("plugin");
@@ -37,39 +37,85 @@ pub fn plugin_dir(config_dir: &Path) -> Result<PathBuf> {
     Ok(plural)
 }
 
+/// Escape a string for embedding inside a double-quoted JavaScript string
+/// literal. A path from the filesystem must never be able to break out of the
+/// template and inject code into the MiMo plugin host.
+fn js_string_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// POSIX single-quote a path for embedding in a shell script (`'…'\''…`).
+fn shell_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Reject paths containing control characters (newline, NUL, …). Space and
+/// other printable characters are fine: they are handled by js_string_escape
+/// / shell_single_quote below. A control character in a filesystem path is a
+/// hostile signal, not a normal install location.
+fn has_control_chars(s: &str) -> bool {
+    s.chars().any(|c| c.is_control())
+}
+
 /// Build the plugin file content with the watchdog binary path baked in.
-fn plugin_content() -> String {
+fn plugin_content() -> Result<String> {
     let bin = std::env::current_exe()
         .ok()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "mimo-herdr".to_string());
-    PLUGIN_SRC.replace("__MIMO_HERDR_BIN__", &bin)
+    if has_control_chars(&bin) {
+        bail!(
+            "mimo-herdr path {bin:?} contains control characters; refusing to embed it"
+        );
+    }
+    Ok(PLUGIN_SRC.replace("__MIMO_HERDR_BIN__", &js_string_escape(&bin)))
 }
 
 fn is_ours(content: &str) -> bool {
     content.contains("custom:mimo-herdr")
 }
 
-pub fn install(install_shim: bool) -> Result<()> {
+pub fn install(install_shim: bool, force: bool) -> Result<()> {
     let config_dir = mimo_config_dir()?;
     fs::create_dir_all(&config_dir).context("failed to create mimo config dir")?;
     let dir = plugin_dir(&config_dir)?;
     fs::create_dir_all(&dir).context("failed to create mimo plugin dir")?;
     let dest = dir.join(PLUGIN_FILE);
 
-    let content = plugin_content();
+    let content = plugin_content()?;
     let existing = fs::read_to_string(&dest).ok();
     match existing {
         Some(old) if old == content => {
             println!("plugin up to date: {}", dest.display());
         }
         Some(old) => {
-            let origin = if is_ours(&old) {
-                "a previous mimo-herdr install"
+            if is_ours(&old) {
+                println!("replacing {} (a previous mimo-herdr install)", dest.display());
+            } else if force {
+                println!(
+                    "replacing {} (foreign plugin; --force given)",
+                    dest.display()
+                );
             } else {
-                "a foreign plugin (e.g. herdr's opencode integration copy)"
-            };
-            println!("replacing {} ({})", dest.display(), origin);
+                bail!(
+                    "{} already exists and is not managed by mimo-herdr.\n\
+                     Refusing to overwrite it (it may be herdr's own integration).\n\
+                     Re-run with --force to overwrite.",
+                    dest.display()
+                );
+            }
             fs::write(&dest, &content).context("failed to write plugin")?;
         }
         None => {
@@ -80,12 +126,17 @@ pub fn install(install_shim: bool) -> Result<()> {
 
     // Claim experimental leftovers from the research phase: the herdr TUI
     // session plugin and its registration are not needed by this bridge.
+    // Only remove the leftover plugin file itself — never the whole tui.jsonc,
+    // which may hold unrelated user preferences.
     let tui_jsonc = config_dir.join("tui.jsonc");
     if let Ok(c) = fs::read_to_string(&tui_jsonc)
         && c.contains("herdr-tui-session.js")
     {
-        fs::remove_file(&tui_jsonc).ok();
-        println!("removed leftover: {}", tui_jsonc.display());
+        println!(
+            "note: {} still references herdr-tui-session.js; \
+             remove that entry manually if you do not want the leftover plugin",
+            tui_jsonc.display()
+        );
     }
     let tui_plugin = config_dir.join("herdr-tui-session.js");
     if tui_plugin.exists() {
@@ -110,12 +161,21 @@ fn install_shim_files() -> Result<()> {
     fs::create_dir_all(&shim_dir).context("failed to create shim dir")?;
 
     let mimo_bin = resolve_executable("mimo").context("mimo not found in PATH")?;
-    let real_opencode = resolve_executable("opencode").ok();
+    // Without a real opencode binary to pass through to, the shim would bake
+    // the bare name "opencode" and re-enter itself when the shim dir is first
+    // on PATH (fork loop). Fail closed instead.
+    let real_opencode = resolve_executable("opencode")
+        .context("real opencode not found in PATH; install opencode or use custom mode without --shim")?;
+    if !real_opencode.starts_with('/') {
+        bail!("resolved opencode must be an absolute path, got {real_opencode:?}");
+    }
+    if has_control_chars(&mimo_bin) || has_control_chars(&real_opencode) {
+        bail!("resolved executable path contains control characters; refusing to write the shim");
+    }
 
-    let shim = SHIM_SRC.replace("__MIMO_BIN__", &mimo_bin).replace(
-        "__OPENCODE_BIN__",
-        real_opencode.as_deref().unwrap_or("opencode"),
-    );
+    let shim = SHIM_SRC
+        .replace("__MIMO_BIN_Q__", &shell_single_quote(&mimo_bin))
+        .replace("__OPENCODE_BIN_Q__", &shell_single_quote(&real_opencode));
     let dest = shim_dir.join("opencode");
     fs::write(&dest, &shim).context("failed to write shim")?;
     use std::os::unix::fs::PermissionsExt;
@@ -141,7 +201,6 @@ fn resolve_executable(name: &str) -> Result<String> {
         }
         let candidate = dir.join(name);
         if candidate.is_file() {
-            #[allow(unused_imports)]
             use std::os::unix::fs::PermissionsExt;
             let ok = candidate
                 .metadata()

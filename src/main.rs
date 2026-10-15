@@ -21,7 +21,7 @@ fn main() {
 
 fn dispatch(cmd: Command) -> Result<()> {
     match cmd {
-        Command::Install { shim } => install::install(shim),
+        Command::Install { shim, force } => install::install(shim, force),
         Command::Uninstall { shim } => install::uninstall(shim),
         Command::Status { json } => status::print_status(json),
         Command::Spawn {

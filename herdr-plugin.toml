@@ -5,11 +5,21 @@ min_herdr_version = "0.8.0"
 description = "MiMo Code as a first-class herdr agent: lifecycle state in the sidebar, crash-proof exit cleanup, one-command spawn"
 platforms = ["linux", "macos"]
 
+# Build locally from the linked source. Never run install.sh here: that script
+# downloads a release binary from the network, which must not happen as a
+# side effect of installing or building this plugin.
 [[build]]
-command = ["sh", "install.sh"]
+command = ["cargo", "build", "--release", "--locked"]
+
+# Wire the MiMo Code plugin (copy herdr-agent-state.js into the mimo config).
+[[actions]]
+id = "install"
+title = "Install MiMo Code plugin bridge"
+contexts = ["global"]
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/target/release/mimo-herdr\" install"]
 
 [[actions]]
 id = "status"
 title = "MiMo Code Herdr: health check"
 contexts = ["global"]
-command = ["mimo-herdr", "status"]
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/target/release/mimo-herdr\" status"]

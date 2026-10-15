@@ -22,6 +22,9 @@ pub enum Command {
         /// Also deploy the optional opencode-identity shim for full `agent prompt` support
         #[arg(long)]
         shim: bool,
+        /// Overwrite a plugin file that mimo-herdr does not own
+        #[arg(long)]
+        force: bool,
     },
     /// Remove the plugin (and optionally the shim)
     Uninstall {

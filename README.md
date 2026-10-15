@@ -31,19 +31,21 @@ spoofing required for the default mode.
   wait/read semantics and native session identity.
 - **E2E smoke test** — `mimo-herdr verify` runs the whole loop: spawn, state
   claim, prompt, reply, exit, watchdog release.
-- **Idempotent install** with health checks and foreign-file detection.
+- **Idempotent install** with health checks; refuses to overwrite a foreign plugin file unless `--force` is passed.
 
 ## Install
 
 ### One-liner (prebuilt binaries)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ShinoharaHaruna/mimo-code-herdr/main/install.sh | sh
+# Prefer a pinned release tag over `main` (mutable).
+curl -fsSL https://raw.githubusercontent.com/ShinoharaHaruna/mimo-code-herdr/v0.1.0/install.sh | MIMO_HERDR_VERSION=v0.1.0 sh
 ```
 
 Downloads the release binary for your platform (Linux x86_64, macOS arm64),
-verifies its SHA-256, installs it to `~/.local/bin`, and wires up the MiMo
-Code plugin automatically.
+**verifies its SHA-256 and refuses to install if the checksum is missing or
+no sha256 tool is available**, installs it to `~/.local/bin`, and wires up the
+MiMo Code plugin automatically.
 
 ### From source
 

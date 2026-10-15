@@ -2,9 +2,9 @@
 //
 // Reports semantic lifecycle state over herdr's official custom-integration
 // path (`herdr pane report-agent --source custom:...`, see
-// https://herdr.dev/docs/integrations/#integrate-your-own-agent) instead of
-// the raw socket API, so MiMo Code shows up in the herdr agents sidebar as
-// `mimo` without any process spoofing.
+// https://herdr.dev/docs/add-herdr-support/) instead of the raw socket API,
+// so MiMo Code shows up in the herdr agents sidebar as `mimo` without any
+// process spoofing.
 //
 // Design notes (state aggregation and watchdog pattern follow
 // https://github.com/junliu-mde/mimo-code-herdr-plugin, MIT):
@@ -16,34 +16,76 @@
 //    thread that quit terminate()s, so no in-process exit hook is reliable.
 //    A detached watchdog holds our stdin pipe; the kernel closes it on ANY
 //    death mode (quit, crash, SIGKILL), the watchdog then releases the label
-//    with a seq stamped +1s ahead so it outranks every report we made while
-//    losing to reports from any mimo started later.
+//    with a seq just above the last report this process emitted, so it
+//    outranks every report the dead process made while losing to reports
+//    from any mimo started later. Seq updates travel over the pipe and the
+//    watchdog persists a floor file the next process starts above.
 //  - A mimo spawned as a tool of another agent (e.g. a Claude Code Bash
 //    session) inherits the pane's HERDR_* env and would hijack that pane's
-//    label; we stay silent when CLAUDECODE is set.
+//    label; we stay silent when a parent-agent marker env is set.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const SOURCE = "custom:mimo-herdr";
 const AGENT = "mimo";
-const WATCHDOG_BIN = "__MIMO_HERDR_BIN__"; // replaced at install time
+const WATCHDOG_BIN = "__MIMO_HERDR_BIN__"; // replaced at install time (JS-escaped)
+
+// Parent-agent markers. CLAUDECODE is the documented Claude Code marker;
+// CLAUDE_CODE_ENTRYPOINT is its CLI entrypoint companion. Both mean this
+// mimo is a tool of another agent, not the pane's primary agent.
+const PARENT_AGENT_ENVS = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"];
+
+function isNestedUnderAnotherAgent() {
+  return PARENT_AGENT_ENVS.some((k) => Boolean(process.env[k]));
+}
 
 // Debug logging: set MIMO_HERDR_DEBUG=1 in the pane env to trace reports.
+// State lives under XDG_STATE_HOME (mode 0600), never /tmp.
 const DEBUG = process.env.MIMO_HERDR_DEBUG === "1";
+const DEBUG_LOG = path.join(stateHome(), "mimo-herdr", "plugin.log");
+
+function stateHome() {
+  const xdg = process.env.XDG_STATE_HOME;
+  if (xdg && xdg.trim()) return xdg;
+  return path.join(os.homedir(), ".local", "state");
+}
+
+function seqFloorPath() {
+  return path.join(stateHome(), "mimo-herdr", "watch-seq");
+}
+
 function debugLog(...parts) {
   if (!DEBUG) return;
   try {
+    fs.mkdirSync(path.dirname(DEBUG_LOG), { recursive: true, mode: 0o700 });
     fs.appendFileSync(
-      "/tmp/mimo-herdr-plugin.log",
+      DEBUG_LOG,
       `${new Date().toISOString()} ${parts.join(" ")}\n`,
+      { mode: 0o600 },
     );
   } catch {}
 }
 
+// Seq base: wall-clock so two panes/sources do not collide, floored above any
+// release seq the previous watchdog wrote so a fast restart is not outranked.
 let reportSeq = Date.now() * 1000;
+try {
+  const floor = Number.parseInt(
+    fs.readFileSync(seqFloorPath(), "utf8").trim(),
+    10,
+  );
+  if (Number.isFinite(floor) && floor > reportSeq) reportSeq = floor;
+} catch {}
+
 function nextSeq() {
   reportSeq += 1;
+  // Tell the watchdog our latest seq so its release can sit just above it.
+  try {
+    watchdog?.stdin.write(`${reportSeq}\n`);
+  } catch {}
   return reportSeq;
 }
 
@@ -93,6 +135,7 @@ function reportAgent(state, sessionID, message) {
 }
 
 function reportSession(sessionID) {
+  if (!sessionID) return Promise.resolve(false);
   return serial(() =>
     runHerdr([
       "pane",
@@ -111,18 +154,24 @@ function reportSession(sessionID) {
 }
 
 // Aggregate state: blocked > working (any busy session) > idle.
+// `blockedDepth` counts overlapping permission/question dialogs so one reply
+// cannot clear a still-pending sibling.
 const busy = new Set();
-let blocked = false;
+let blockedDepth = 0;
 let currentSessionID;
 let lastReportedState;
 let lastReportedSession;
 
 function syncState() {
+  const blocked = blockedDepth > 0;
   const next = blocked ? "blocked" : busy.size > 0 ? "working" : "idle";
   if (next === lastReportedState) return Promise.resolve();
-  lastReportedState = next;
   const message = blocked ? "waiting for user input" : undefined;
-  return reportAgent(next, currentSessionID, message);
+  // Only remember the state once herdr accepted the report, so a failed
+  // spawn/CLI call is retried on the next transition instead of sticking.
+  return reportAgent(next, currentSessionID, message).then((ok) => {
+    if (ok) lastReportedState = next;
+  });
 }
 
 // Crash-proof exit cleanup: see design notes above.
@@ -148,6 +197,7 @@ export const MimoHerdrStatePlugin = async () => {
       HERDR_PANE_ID: process.env.HERDR_PANE_ID,
       HERDR_BIN_PATH: process.env.HERDR_BIN_PATH,
       CLAUDECODE: process.env.CLAUDECODE,
+      CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT,
     }),
   );
   if (
@@ -157,7 +207,8 @@ export const MimoHerdrStatePlugin = async () => {
   ) {
     return {};
   }
-  if (process.env.CLAUDECODE) {
+  if (isNestedUnderAnotherAgent()) {
+    debugLog("nested under another agent; staying silent");
     return {};
   }
 
@@ -185,7 +236,7 @@ export const MimoHerdrStatePlugin = async () => {
           if (status === "idle") {
             if (id) busy.delete(id);
             else busy.clear();
-            if (busy.size === 0) blocked = false;
+            if (busy.size === 0) blockedDepth = 0;
           } else if (status && id) {
             busy.add(id);
             if (id !== currentSessionID) {
@@ -203,24 +254,26 @@ export const MimoHerdrStatePlugin = async () => {
         case "session.deleted": {
           const id = properties.sessionID ?? properties.info?.id;
           if (id) busy.delete(id);
-          if (busy.size === 0) blocked = false;
+          if (busy.size === 0) blockedDepth = 0;
           await syncState();
           break;
         }
         case "permission.asked":
         case "question.asked":
-          blocked = true;
+          blockedDepth += 1;
           await syncState();
           break;
         case "permission.replied":
         case "question.replied":
         case "question.rejected":
-          blocked = false;
+          blockedDepth = Math.max(0, blockedDepth - 1);
           await syncState();
           break;
-        case "session.created":
-          await reportSession(properties.info?.id ?? properties.sessionID);
+        case "session.created": {
+          const id = properties.info?.id ?? properties.sessionID;
+          if (id) await reportSession(id);
           break;
+        }
         default:
           break;
       }

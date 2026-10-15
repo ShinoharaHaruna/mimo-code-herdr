@@ -3,12 +3,15 @@
 # installs it to ~/.local/bin, and runs `mimo-herdr install` to wire up the
 # MiMo Code plugin.
 #
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ShinoharaHaruna/mimo-code-herdr/main/install.sh | sh
+# Usage (prefer a pinned release tag, not `main`):
+#   curl -fsSL https://raw.githubusercontent.com/ShinoharaHaruna/mimo-code-herdr/v0.1.0/install.sh | MIMO_HERDR_VERSION=v0.1.0 sh
 #
 # Env overrides:
 #   MIMO_HERDR_VERSION   release tag to fetch (default: latest)
 #   MIMO_HERDR_INSTALL_DIR   install dir (default: ~/.local/bin)
+#
+# Verification: a downloaded release is refused unless its .sha256 file is
+# present and sha256sum (or shasum) can verify it.
 #
 # Dev/testing:
 #   install.sh --dry-run            print what would happen, change nothing
@@ -104,15 +107,25 @@ else
     echo "need curl or wget" >&2
     exit 1
   fi
-  # Verify checksum when a .sha256 file was fetched alongside. Compare the
-  # hash manually so both "hash only" and "hash  filename" formats work.
-  if [ -f "$TMP/$TARBALL.sha256" ] && command -v shasum >/dev/null 2>&1; then
-    expected="$(awk '{print $1}' "$TMP/$TARBALL.sha256")"
+  # Verify the release checksum. Fail closed: a missing checksum file or a
+  # missing sha256 tool aborts the install rather than trusting the download.
+  # Compare manually so both "hash only" and "hash  filename" formats work.
+  if [ ! -f "$TMP/$TARBALL.sha256" ]; then
+    echo "missing $TARBALL.sha256; refusing to install an unverified binary" >&2
+    exit 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$TMP/$TARBALL" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
     actual="$(shasum -a 256 "$TMP/$TARBALL" | awk '{print $1}')"
-    if [ "$expected" != "$actual" ]; then
-      echo "checksum mismatch for $TARBALL" >&2
-      exit 1
-    fi
+  else
+    echo "need sha256sum or shasum to verify the download; refusing to continue" >&2
+    exit 1
+  fi
+  expected="$(awk '{print $1}' "$TMP/$TARBALL.sha256")"
+  if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+    echo "checksum mismatch for $TARBALL (expected $expected, got $actual)" >&2
+    exit 1
   fi
 fi
 

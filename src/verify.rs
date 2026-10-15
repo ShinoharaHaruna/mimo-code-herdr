@@ -40,7 +40,7 @@ pub fn verify() -> Result<()> {
     std::fs::create_dir_all(&scratch).context("failed to create scratch dir")?;
     trust_workspace(&scratch)?;
 
-    let (tab, pane) = herdr::tab_create(scratch.to_str().unwrap(), LABEL, None)?;
+    let (tab, pane) = herdr::tab_create(scratch.to_str().unwrap(), LABEL, None, None)?;
     println!("[1/6] created tab {tab}, pane {pane}");
 
     let fail = |_tab: &str, pane: &str, step: &str| -> Result<()> {

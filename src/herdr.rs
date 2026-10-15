@@ -104,7 +104,12 @@ pub fn agent_list() -> Result<Vec<AgentEntry>> {
     serde_json::from_value(agents.clone()).context("unexpected agents shape")
 }
 
-pub fn tab_create(cwd: &str, label: &str, env: Option<&str>) -> Result<(String, String)> {
+pub fn tab_create(
+    cwd: &str,
+    label: &str,
+    env: Option<&str>,
+    workspace: Option<&str>,
+) -> Result<(String, String)> {
     let mut args = vec![
         "tab",
         "create",
@@ -114,6 +119,10 @@ pub fn tab_create(cwd: &str, label: &str, env: Option<&str>) -> Result<(String, 
         label,
         "--no-focus",
     ];
+    if let Some(ws) = workspace {
+        args.push("--workspace");
+        args.push(ws);
+    }
     if let Some(e) = env {
         args.push("--env");
         args.push(e);

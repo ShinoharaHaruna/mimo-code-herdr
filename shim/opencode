@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # mimo-code-herdr shim (optional mode).
 #
 # Inside a Herdr pane, the `opencode` command launches MiMo Code under the
@@ -10,9 +10,12 @@
 # Outside Herdr the shim is a transparent pass-through to the real opencode.
 # This makes it safe to keep the shim dir at the front of PATH.
 #
+# Paths are substituted as single-quoted absolute paths by `mimo-herdr
+# install --shim`. bash is required for `exec -a`.
+#
 # Installed by `mimo-herdr install --shim`.
 
 if [ "${HERDR_ENV:-}" = "1" ] && [ -n "${HERDR_PANE_ID:-}" ]; then
-  exec -a opencode "__MIMO_BIN__" "$@"
+  exec -a opencode __MIMO_BIN_Q__ "$@"
 fi
-exec "__OPENCODE_BIN__" "$@"
+exec __OPENCODE_BIN_Q__ "$@"
